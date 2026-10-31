@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import frappe
+import requests
 from frappe.tests import IntegrationTestCase
 
 from india_compliance.gst_india.api_classes.tally_public import (
@@ -87,5 +88,5 @@ class TestTallyPublicGSTIN(IntegrationTestCase):
 
     @patch("india_compliance.gst_india.api_classes.tally_public.requests.post")
     def test_provider_failure_degrades_gracefully(self, post):
-        post.side_effect = TimeoutError("provider timeout")
+        post.side_effect = requests.Timeout("provider timeout")
         self.assertIsNone(get_tally_gstin_info(self.gstin))
