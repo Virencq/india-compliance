@@ -17,6 +17,7 @@ from india_compliance.gst_india.api_classes.taxpayer_base import (
     otp_handler,
 )
 from india_compliance.gst_india.api_classes.taxpayer_returns import GSTR1API
+from india_compliance.gst_india.api_classes.tally_public import get_tally_gstin_info
 from india_compliance.gst_india.utils import (
     parse_datetime,
     titlecase,
@@ -64,20 +65,17 @@ def _get_gstin_info(gstin, *, doc=None, throw_error=True):
     if not gstin:
         return frappe._dict()
 
-    response = get_archived_gstin_info(gstin)
+    # Prefer the free, keyless Tally lookup for party master autofill.
+    # Its successful responses are cached for 180 days by the provider adapter.
+    response = get_archived_gstin_info(gstin) or get_tally_gstin_info(gstin)
 
     if not response:
         try:
             if frappe.cache.get_value("gst_server_error"):
                 return frappe._dict()
 
+            # Retain the configured India Compliance/GSP API as a fallback.
             response = PublicAPI(doc).get_gstin_info(gstin)
-            frappe.enqueue(
-                "india_compliance.gst_india.doctype.gstin.gstin.create_or_update_gstin_status",
-                queue="long",
-                response=get_formatted_response_for_status(response),
-            )
-
         except Exception as exc:
             if isinstance(exc, GSPServerError):
                 frappe.cache.set_value("gst_server_error", True, expires_in_sec=60)
@@ -88,6 +86,14 @@ def _get_gstin_info(gstin, *, doc=None, throw_error=True):
             frappe.log_error(title="Failed to Fetch GSTIN Info", message=exc)
             frappe.clear_last_message()
             return frappe._dict()
+
+    # Cache/provider data also updates the GSTIN master without a second lookup.
+    if response:
+        frappe.enqueue(
+            "india_compliance.gst_india.doctype.gstin.gstin.create_or_update_gstin_status",
+            queue="long",
+            response=get_formatted_response_for_status(response),
+        )
 
     business_name = response.lgnm
     if response.ctb in TRADE_NAME_BUSINESS_TYPES and response.tradeNam:
