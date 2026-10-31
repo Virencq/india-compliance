@@ -5,8 +5,8 @@ request server-side, cache successful responses, and let callers fall back to
 the configured India Compliance GST provider when it is unavailable.
 """
 
-import requests
 import frappe
+import requests
 
 from india_compliance.gst_india.utils import get_state
 
